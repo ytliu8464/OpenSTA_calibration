@@ -44,6 +44,7 @@
 #include "StaState.hh"
 #include "Corner.hh"
 #include "PathAnalysisPt.hh"
+#include "Sta.hh" // YL
 
 namespace sta {
 
@@ -52,7 +53,8 @@ using std::string;
 class SdfWriter : public StaState
 {
 public:
-  SdfWriter(StaState *sta);
+  // SdfWriter(StaState *sta);
+  SdfWriter(Sta *sta); // YL
   ~SdfWriter();
   void write(const char *filename,
 	     const Corner *corner,
@@ -110,6 +112,8 @@ protected:
   void writeSdfTriple(float min,
                       float max);
   void writeSdfDelay(double delay);
+  void writeArrivals(); // YL
+  void writeInstArrivals(Instance *inst); // YL
   string sdfPortName(const Pin *pin);
   string sdfPathName(const Pin *pin);
   string sdfPathName(const Instance *inst);
@@ -128,6 +132,8 @@ private:
   const Corner *corner_;
   int arc_delay_min_index_;
   int arc_delay_max_index_;
+
+  Sta *sta_; // YL
 };
 
 void
@@ -139,18 +145,21 @@ writeSdf(const char *filename,
 	 bool gzip,
 	 bool no_timestamp,
 	 bool no_version,
-	 StaState *sta)
+	 //StaState *sta)
+   Sta *sta) // YLå
 {
   SdfWriter writer(sta);
   writer.write(filename, corner, sdf_divider, include_typ, digits, gzip,
 	       no_timestamp, no_version);
 }
 
-SdfWriter::SdfWriter(StaState *sta) :
+SdfWriter::SdfWriter(Sta *sta) :
+//SdfWriter::SdfWriter(StaState *sta) :
   StaState(sta),
   sdf_escape_('\\'),
   network_escape_(network_->pathEscape()),
-  delay_format_(nullptr)
+  delay_format_(nullptr),
+  sta_(sta) // YL
 {
 }
 
@@ -197,6 +206,8 @@ SdfWriter::write(const char *filename,
   writeInterconnects();
   writeInstances();
   writeTrailer();
+  writeArrivals(); // YL
+
 
   gzclose(stream_);
   stream_ = nullptr;
@@ -728,6 +739,78 @@ SdfWriter::writePeriodCheck(const Pin *pin,
   gzprintf(stream_, "    (PERIOD %s ", pin_name.c_str());
   writeSdfTriple(min_period, min_period);
   gzprintf(stream_, ")\n");
+}
+
+// YL: Write arrival time for each pin. 
+void
+SdfWriter::writeArrivals()
+{
+  gzprintf(stream_, " (ARRIVALTIMES\n");
+  
+  writeInstArrivals(network_->topInstance());
+  LeafInstanceIterator *inst_iter = network_->leafInstanceIterator();
+  while (inst_iter->hasNext()) {
+    Instance *inst = inst_iter->next();
+    writeInstArrivals(inst);
+  }
+  delete inst_iter;
+  
+  gzprintf(stream_, " )\n");
+}
+
+void SdfWriter::writeInstArrivals(Instance *inst)
+{
+  InstancePinIterator *pin_iter = network_->pinIterator(inst);
+  while (pin_iter->hasNext()) {
+    Pin *pin = pin_iter->next();
+    Vertex *vertex = graph_->pinLoadVertex(pin);
+
+    // arrival time
+    gzprintf(stream_, "  (AT %s ", sdfPathName(pin));
+    RiseFallMinMax ats;
+    for(auto rf: RiseFall::range()) {
+      for(auto el: MinMax::range()) {
+        auto path_ap = corner_->findPathAnalysisPt(el);
+        if(!path_ap) continue;
+        auto arrival = sta_->vertexArrival(vertex, rf, path_ap);
+        ats.setValue(rf, path_ap->pathMinMax(), arrival);
+      }
+    }
+
+    writeSdfTriple(ats, RiseFall::rise());
+    gzprintf(stream_, " ");
+    writeSdfTriple(ats, RiseFall::fall());
+    gzprintf(stream_, ")\n");
+
+    // slew
+    gzprintf(stream_, "  (SLEW %s ", sdfPathName(pin));
+    RiseFallMinMax slews;
+    for(auto rf: RiseFall::range()) {
+      for(auto el: MinMax::range()) {
+        slews.setValue(rf, el, sta_->vertexSlew(vertex, rf, el));
+      }
+    }
+
+    writeSdfTriple(slews, RiseFall::rise());
+    gzprintf(stream_, " ");
+    writeSdfTriple(slews, RiseFall::fall());
+    gzprintf(stream_, ")\n");
+    
+    // required arrival time
+    gzprintf(stream_, "  (RAT %s ", sdfPathName(pin));
+    RiseFallMinMax rats;
+    for(auto rf: RiseFall::range()) {
+      for(auto el: MinMax::range()) {
+        rats.setValue(rf, el, sta_->vertexRequired(vertex, rf, el));
+      }
+    }
+
+    writeSdfTriple(rats, RiseFall::rise());
+    gzprintf(stream_, " ");
+    writeSdfTriple(rats, RiseFall::fall());
+    gzprintf(stream_, ")\n");
+  }
+  delete pin_iter;
 }
 
 const char *
