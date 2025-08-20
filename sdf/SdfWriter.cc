@@ -205,8 +205,9 @@ SdfWriter::write(const char *filename,
   writeHeader(default_lib, no_timestamp, no_version);
   writeInterconnects();
   writeInstances();
-  writeTrailer();
   writeArrivals(); // YL
+  writeTrailer();
+  
 
 
   gzclose(stream_);
@@ -765,8 +766,10 @@ void SdfWriter::writeInstArrivals(Instance *inst)
     Pin *pin = pin_iter->next();
     Vertex *vertex = graph_->pinLoadVertex(pin);
 
+    const std::string pin_path = sdfPathName(pin);
+
     // arrival time
-    gzprintf(stream_, "  (AT %s ", sdfPathName(pin));
+    gzprintf(stream_, "  (AT %s ", pin_path.c_str());
     RiseFallMinMax ats;
     for(auto rf: RiseFall::range()) {
       for(auto el: MinMax::range()) {
@@ -783,7 +786,7 @@ void SdfWriter::writeInstArrivals(Instance *inst)
     gzprintf(stream_, ")\n");
 
     // slew
-    gzprintf(stream_, "  (SLEW %s ", sdfPathName(pin));
+    gzprintf(stream_, "  (SLEW %s ", pin_path.c_str());
     RiseFallMinMax slews;
     for(auto rf: RiseFall::range()) {
       for(auto el: MinMax::range()) {
@@ -797,7 +800,7 @@ void SdfWriter::writeInstArrivals(Instance *inst)
     gzprintf(stream_, ")\n");
     
     // required arrival time
-    gzprintf(stream_, "  (RAT %s ", sdfPathName(pin));
+    gzprintf(stream_, "  (RAT %s ", pin_path.c_str());
     RiseFallMinMax rats;
     for(auto rf: RiseFall::range()) {
       for(auto el: MinMax::range()) {
