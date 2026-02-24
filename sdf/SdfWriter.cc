@@ -764,10 +764,13 @@ void SdfWriter::writeInstArrivals(Instance *inst) // YL
   while (pin_iter->hasNext()) {
     Pin *pin = pin_iter->next();
     Vertex *vertex = graph_->pinLoadVertex(pin);
+    if (!vertex)
+      vertex = graph_->pinDrvrVertex(pin);
+    if (!vertex)
+      continue;  // Skip pins without any vertex in the graph
     const std::string pin_path = sdfPathName(pin);
 
     // arrival time
-    gzprintf(stream_, "  (AT %s ", pin_path.c_str());
     RiseFallMinMax ats;
     for(auto rf: RiseFall::range()) {
       for(auto el: MinMax::range()) {
@@ -777,38 +780,42 @@ void SdfWriter::writeInstArrivals(Instance *inst) // YL
         ats.setValue(rf, path_ap->pathMinMax(), arrival);
       }
     }
-
-    writeSdfTriple(ats, RiseFall::rise());
-    gzprintf(stream_, " ");
-    writeSdfTriple(ats, RiseFall::fall());
+    gzprintf(stream_, "  (AT %s ", pin_path.c_str());
+    if (ats.hasValue(RiseFall::rise(), MinMax::min())) {
+      writeSdfTriple(ats, RiseFall::rise());
+      gzprintf(stream_, " ");
+      writeSdfTriple(ats, RiseFall::fall());
+    }
     gzprintf(stream_, ")\n");
 
     // slew
-    gzprintf(stream_, "  (SLEW %s ", pin_path.c_str());
     RiseFallMinMax slews;
     for(auto rf: RiseFall::range()) {
       for(auto el: MinMax::range()) {
         slews.setValue(rf, el, sta_->vertexSlew(vertex, rf, el));
       }
     }
-
-    writeSdfTriple(slews, RiseFall::rise());
-    gzprintf(stream_, " ");
-    writeSdfTriple(slews, RiseFall::fall());
+    gzprintf(stream_, "  (SLEW %s ", pin_path.c_str());
+    if (slews.hasValue(RiseFall::rise(), MinMax::min())) {
+      writeSdfTriple(slews, RiseFall::rise());
+      gzprintf(stream_, " ");
+      writeSdfTriple(slews, RiseFall::fall());
+    }
     gzprintf(stream_, ")\n");
     
     // required arrival time
-    gzprintf(stream_, "  (RAT %s ", pin_path.c_str());
     RiseFallMinMax rats;
     for(auto rf: RiseFall::range()) {
       for(auto el: MinMax::range()) {
         rats.setValue(rf, el, sta_->vertexRequired(vertex, rf, el));
       }
     }
-
-    writeSdfTriple(rats, RiseFall::rise());
-    gzprintf(stream_, " ");
-    writeSdfTriple(rats, RiseFall::fall());
+    gzprintf(stream_, "  (RAT %s ", pin_path.c_str());
+    if (rats.hasValue(RiseFall::rise(), MinMax::min())) {
+      writeSdfTriple(rats, RiseFall::rise());
+      gzprintf(stream_, " ");
+      writeSdfTriple(rats, RiseFall::fall());
+    }
     gzprintf(stream_, ")\n");
   }
   delete pin_iter;
